@@ -150,14 +150,14 @@ Ensure the following variables are defined:
 ```ini
 # OpenAI-Compatible AI Gateway Settings (e.g. 9router, vLLM, LiteLLM, Ollama)
 OPENAI_COMPATIBLE_BASE_URL="https://9router-production-a99a.up.railway.app/v1"
-OPENAI_COMPATIBLE_API_KEY="sk-0d71fb7c21ea2f91-mv2hhc-443a0a26"
+OPENAI_COMPATIBLE_API_KEY="your_openai_compatible_api_key"
 OPENAI_COMPATIBLE_MODEL="gemini/gemini-3.8-flash"
 
 # Google Gemini API Key (Direct SDK fallback)
 GEMINI_API_KEY="your_gemini_api_key"
 
 # Database (Neon Lakebase Postgres)
-DATABASE_URL="postgresql://user:pass@ep-example-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
+DATABASE_URL="postgresql://user:password@host/neondb?sslmode=require"
 ```
 
 ### 3. Installation & Run

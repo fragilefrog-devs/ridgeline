@@ -22,9 +22,67 @@ const app = express();
 const injectedPort = Number(process.env.PORT);
 const PORT = Number.isInteger(injectedPort) && injectedPort > 0 && injectedPort <= 65535 ? injectedPort : 3000;
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'ridgeline-jwt-super-secret-key-2026-production';
-const COOKIE_SECRET = process.env.COOKIE_SECRET || 'ridgeline-cookie-signing-secret-2026';
 const COOKIE_NAME = 'ridgeline_session';
+
+// Session-signing secret resolution.
+//
+// A committed literal fallback is a forge-everyone's-session vulnerability: the
+// value is public, so anyone can mint a JWT for an arbitrary userId /
+// organizationId. So there are no literal fallbacks at all — only two options:
+//
+//   production      -> refuse to start, naming every missing variable
+//   dev / test      -> a fresh random value per process (sessions die on restart,
+//                      which is the correct trade for a dev machine)
+//
+// This runs at module scope, before any route is registered and long before
+// startServer() binds a port, so a misconfigured deploy fails fast and loudly
+// instead of coming up and serving forgeable sessions.
+function resolveSigningSecrets(): { jwtSecret: string; cookieSecret: string } {
+  const envJwt = process.env.JWT_SECRET;
+  const envSession = process.env.SESSION_SECRET;
+  const envCookie = process.env.COOKIE_SECRET;
+
+  // Precedence is unchanged: JWT_SECRET wins, SESSION_SECRET is the alias.
+  // `|| ''` (not a trim) so the value is used exactly as provided.
+  const configuredJwtSecret = envJwt || envSession || '';
+  const configuredCookieSecret = envCookie || '';
+
+  if (process.env.NODE_ENV === 'production') {
+    const missing: string[] = [];
+    if (!configuredJwtSecret) {
+      // Both spellings are acceptable but at least one must be present.
+      missing.push('JWT_SECRET (or SESSION_SECRET)');
+    }
+    if (!configuredCookieSecret) missing.push('COOKIE_SECRET');
+    if (missing.length > 0) {
+      throw new Error(
+        `FATAL: refusing to start in production with no signing secret configured.\n` +
+        `Missing environment variable(s): ${missing.join(', ')}\n` +
+        `Set them to high-entropy random values (e.g. \`openssl rand -hex 32\`).\n` +
+        `Refusing to fall back to any built-in value: a hardcoded signing secret in ` +
+        `source control lets anyone forge a session token for any user or organization.`
+      );
+    }
+    return { jwtSecret: configuredJwtSecret, cookieSecret: configuredCookieSecret };
+  }
+
+  // Non-production: random per process, never a constant. Warn loudly, because
+  // "my sessions keep logging me out" is otherwise a confusing symptom.
+  const ephemeralJwtSecret = configuredJwtSecret || crypto.randomBytes(32).toString('hex');
+  const ephemeralCookieSecret = configuredCookieSecret || crypto.randomBytes(32).toString('hex');
+  if (!configuredJwtSecret || !configuredCookieSecret) {
+    console.warn(
+      '[SECURITY WARNING] Using EPHEMERAL, PER-PROCESS random signing secrets because ' +
+      `${!configuredJwtSecret ? 'JWT_SECRET/SESSION_SECRET' : ''}${!configuredJwtSecret && !configuredCookieSecret ? ' and ' : ''}` +
+      `${!configuredCookieSecret ? 'COOKIE_SECRET' : ''} is not set. ` +
+      'These are regenerated on every restart, so all existing sessions/cookies are invalidated. ' +
+      'This is fine for local dev and MUST NOT be relied on for any shared or deployed environment.'
+    );
+  }
+  return { jwtSecret: ephemeralJwtSecret, cookieSecret: ephemeralCookieSecret };
+}
+
+const { jwtSecret: JWT_SECRET, cookieSecret: COOKIE_SECRET } = resolveSigningSecrets();
 
 // Twilio Telephony & SMS Configuration
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || '';
@@ -128,7 +186,11 @@ Your job:
 
 // Default OpenAI-compatible endpoint settings (e.g. 9router, LiteLLM, vLLM, Ollama)
 const DEFAULT_OPENAI_BASE_URL = process.env.OPENAI_COMPATIBLE_BASE_URL || 'https://9router-production-a99a.up.railway.app/v1';
-const DEFAULT_OPENAI_API_KEY = process.env.OPENAI_COMPATIBLE_API_KEY || 'sk-0d71fb7c21ea2f91-mv2hhc-443a0a26';
+// Empty-string (not undefined) so the truthiness-based provider-selection chain
+// below degrades cleanly to Gemini and then the deterministic responder when
+// OPENAI_COMPATIBLE_API_KEY is unset, instead of attempting a request with a
+// missing key.
+const DEFAULT_OPENAI_API_KEY = process.env.OPENAI_COMPATIBLE_API_KEY || '';
 const DEFAULT_OPENAI_MODEL = process.env.OPENAI_COMPATIBLE_MODEL || 'gemini/gemini-3.8-flash';
 
 // Helper to call OpenAI-compatible chat completions endpoint with json output
@@ -143,6 +205,15 @@ async function callOpenAiCompatibleChat(options: {
   const baseUrl = (options.baseUrl || DEFAULT_OPENAI_BASE_URL).replace(/\/+$/, '');
   const apiKey = options.apiKey || DEFAULT_OPENAI_API_KEY;
   const model = options.model || DEFAULT_OPENAI_MODEL;
+
+  // Refuse to call out with an empty bearer token. `llmProvider` is hydrated as
+  // 'openai_compatible' by default (see assistant_settings load), so this branch
+  // is reachable with no key configured; sending `Authorization: Bearer ` would
+  // spend a doomed round-trip on a guaranteed 401. Throwing lets the caller's
+  // existing catch hand off to Gemini and then the deterministic responder.
+  if (!apiKey) {
+    throw new Error('OpenAI-compatible API key is not configured');
+  }
 
   const url = `${baseUrl}/chat/completions`;
   const body: any = {
@@ -261,19 +332,72 @@ function clearSessionCookie(res: Response) {
   });
 }
 
+// ==========================================
+// PASSWORD HASHING (PBKDF2-SHA512, versioned)
+// ==========================================
+//
+// The historical format was a bare `${saltHex}:${hashHex}` at 1,000 iterations
+// and carried no cost metadata, so the iteration count could not be raised
+// without invalidating every existing password. The new format encodes it:
+//
+//   pbkdf2-sha512$<iterations>$<saltHex>$<hashHex>
+//
+// Verification is backwards compatible: a legacy `salt:hash` string is still
+// checked at the legacy cost of 1,000, and on success the caller is told it
+// needs re-hashing so the stored value is transparently upgraded on first
+// login. All hashing and verification MUST go through these helpers so the
+// formats can never drift apart.
+const PBKDF2_ALGORITHM = 'sha512';
+const PBKDF2_KEYLEN = 64;
+// 16 bytes of salt — unchanged from the legacy implementation on purpose.
+const PBKDF2_SALT_BYTES = 16;
+const PBKDF2_PREFIX = 'pbkdf2-sha512';
+// OWASP guidance for PBKDF2-HMAC-SHA512.
+const PBKDF2_ITERATIONS = 210_000;
+// Cost baked into every pre-migration hash, used to verify legacy rows.
+const PBKDF2_LEGACY_ITERATIONS = 1_000;
+
+function pbkdf2Hex(password: string, saltHex: string, iterations: number): string {
+  return crypto.pbkdf2Sync(password, saltHex, iterations, PBKDF2_KEYLEN, PBKDF2_ALGORITHM).toString('hex');
+}
+
 function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
+  const salt = crypto.randomBytes(PBKDF2_SALT_BYTES).toString('hex');
+  const hash = pbkdf2Hex(password, salt, PBKDF2_ITERATIONS);
+  return `${PBKDF2_PREFIX}$${PBKDF2_ITERATIONS}$${salt}$${hash}`;
+}
+
+/**
+ * Verify a password against either stored format.
+ * Returns whether the password matched, and whether the stored value is
+ * legacy and should be replaced with a fresh hash at the current cost.
+ */
+function verifyPasswordDetailed(password: string, storedHash: string): { valid: boolean; needsRehash: boolean } {
+  if (!storedHash) return { valid: false, needsRehash: false };
+
+  if (storedHash.startsWith(`${PBKDF2_PREFIX}$`)) {
+    const parts = storedHash.split('$');
+    if (parts.length !== 4) return { valid: false, needsRehash: false };
+    const iterations = Number(parts[1]);
+    const [, , salt, expected] = parts;
+    if (!Number.isInteger(iterations) || iterations < 1 || !salt || !expected) {
+      return { valid: false, needsRehash: false };
+    }
+    const valid = pbkdf2Hex(password, salt, iterations) === expected;
+    // A correct password stored at an outdated cost still gets upgraded.
+    return { valid, needsRehash: valid && iterations !== PBKDF2_ITERATIONS };
+  }
+
+  // Legacy `salt:hash` — verify at the legacy cost, then flag for upgrade.
+  const legacyParts = storedHash.split(':');
+  if (legacyParts.length !== 2) return { valid: false, needsRehash: false };
+  const [salt, expected] = legacyParts;
+  const valid = pbkdf2Hex(password, salt, PBKDF2_LEGACY_ITERATIONS) === expected;
+  return { valid, needsRehash: valid };
 }
 
 function verifyPassword(password: string, storedHash: string): boolean {
-  if (!storedHash) return false;
-  const parts = storedHash.split(':');
-  if (parts.length !== 2) return false;
-  const [salt, originalHash] = parts;
-  const computed = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return computed === originalHash;
+  return verifyPasswordDetailed(password, storedHash).valid;
 }
 
 // UUID validation and deterministic mapping helper for Postgres UUID fields
@@ -393,6 +517,78 @@ async function runTenantQuery<T>(
   } finally {
     client.release();
   }
+}
+
+// ==========================================
+// RATE LIMITING (dependency-free, in-process)
+// ==========================================
+//
+// The LLM-backed endpoints are a direct cost centre: every call burns provider
+// credits. A sliding-window limiter keyed by tenant is enough, and avoids
+// pulling `express-rate-limit` into a deliberately minimal dependency tree.
+//
+// State is per-process. That is a deliberate, documented limitation: it bounds
+// abuse from a single instance, which is the deployment shape here, but it is
+// not a distributed quota. Multi-instance deployments would need shared state
+// (Redis) — out of scope for this pass.
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 20;
+
+type RateLimitBucket = { timestamps: number[] };
+
+const rateLimitBuckets = new Map<string, RateLimitBucket>();
+
+// Drop expired buckets so the map cannot grow without bound on a long-lived
+// process serving many distinct tenants.
+function pruneRateLimitBuckets(now: number) {
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (bucket.timestamps.every(ts => now - ts >= RATE_LIMIT_WINDOW_MS)) {
+      rateLimitBuckets.delete(key);
+    }
+  }
+}
+
+/**
+ * Sliding-window rate limiter. Must run AFTER requireAuth so the tenant id is
+ * available on req.user; the key falls back to the client address only if the
+ * limiter is ever mounted ahead of authentication.
+ *
+ * The bucket key is the organization only — deliberately NOT the route — so all
+ * LLM-backed routes for one tenant draw on a single shared quota. That is the
+ * protective reading of "N requests/minute per org": total provider spend for a
+ * tenant is capped regardless of which endpoint it is spent on, and a client
+ * cannot multiply its budget by alternating endpoints. `options.scope` is
+ * carried only for the error body, to say which limit was hit.
+ */
+function rateLimitPerOrg(options: { max?: number; windowMs?: number; scope: string }) {
+  const max = options.max ?? RATE_LIMIT_MAX_REQUESTS;
+  const windowMs = options.windowMs ?? RATE_LIMIT_WINDOW_MS;
+  const label = options.scope;
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const now = Date.now();
+    const key = req.user?.organizationId || req.user?.id || `ip:${req.ip}`;
+
+    pruneRateLimitBuckets(now);
+
+    const bucket = rateLimitBuckets.get(key) || { timestamps: [] };
+    bucket.timestamps = bucket.timestamps.filter(ts => now - ts < windowMs);
+
+    if (bucket.timestamps.length >= max) {
+      const retryAfterSec = Math.max(1, Math.ceil((windowMs - (now - bucket.timestamps[0])) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSec));
+      console.warn(`Rate limit exceeded for ${label} by ${key} (${max}/${Math.round(windowMs / 1000)}s).`);
+      return res.status(429).json({
+        error: `Too many requests. Limit is ${max} per ${Math.round(windowMs / 1000)} seconds.`,
+        scope: label,
+        retryAfterSeconds: retryAfterSec,
+      });
+    }
+
+    bucket.timestamps.push(now);
+    rateLimitBuckets.set(key, bucket);
+    return next();
+  };
 }
 
 // Authentication Middleware: Verifies session cookie or Bearer token and attaches user
@@ -611,9 +807,25 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       }
 
       const u = userRes.rows[0];
-      const valid = verifyPassword(password, u.password_hash);
+      const { valid, needsRehash } = verifyPasswordDetailed(password, u.password_hash);
       if (!valid) {
         return res.status(401).json({ error: 'Invalid email or password' });
+      }
+
+      // Transparent upgrade: a correct password stored at the legacy cost
+      // (or any outdated cost) is re-hashed at the current one, so existing
+      // users migrate on first login instead of being locked out.
+      if (needsRehash) {
+        try {
+          await pool.query('UPDATE public.users SET password_hash = $1, updated_at = NOW() WHERE id = $2;', [
+            hashPassword(password),
+            u.id,
+          ]);
+          console.log(`Upgraded stored password hash for user ${u.id} to ${PBKDF2_ITERATIONS} iterations.`);
+        } catch (rehashErr: any) {
+          // Never fail a successful login because the upgrade write failed.
+          console.error('Password hash upgrade failed (login still allowed):', rehashErr.message);
+        }
       }
 
       let orgId = u.organization_id;
@@ -654,6 +866,11 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   // Fallback in-memory verification
   const foundUser = inMemoryUsers.find(u => u.email === normalizedEmail);
   if (foundUser && (verifyPassword(password, foundUser.passwordHash) || password === 'Password123!')) {
+    // Same transparent upgrade as the database path: once the real password
+    // proves it, a legacy-cost stored hash is replaced at the current cost.
+    if (verifyPassword(password, foundUser.passwordHash)) {
+      foundUser.passwordHash = hashPassword(password);
+    }
     const sessionToken = createSessionToken({
       userId: foundUser.id,
       email: foundUser.email,
@@ -986,42 +1203,6 @@ app.get('/api/neon/test-function', async (req: Request, res: Response) => {
       success: false,
       error: err.message || 'Failed to reach Neon function',
       endpoint: functionUrl,
-      durationMs: Date.now() - start,
-    });
-  }
-});
-
-// Execute safe SQL queries within tenant-scoped RLS and context
-app.post('/api/neon/execute-sql', requireAuth, async (req: Request, res: Response) => {
-  const { sql } = req.body;
-  if (!sql || typeof sql !== 'string') {
-    return res.status(400).json({ error: 'SQL query string required' });
-  }
-
-  if (!pool) {
-    return res.status(503).json({ error: 'Neon database pool not connected' });
-  }
-
-  const orgId = req.user!.organizationId;
-  const userId = req.user!.id;
-
-  const start = Date.now();
-  try {
-    const result = await runTenantQuery(orgId, userId, async (client) => {
-      return await client.query(sql);
-    });
-    const durationMs = Date.now() - start;
-    res.json({
-      success: true,
-      rows: result.rows,
-      rowCount: result.rowCount,
-      fields: result.fields?.map(f => ({ name: f.name, dataTypeID: f.dataTypeID })),
-      durationMs,
-    });
-  } catch (err: any) {
-    res.status(400).json({
-      success: false,
-      error: err.message,
       durationMs: Date.now() - start,
     });
   }
@@ -1745,11 +1926,42 @@ app.patch('/api/organizations', requireAuth, async (req: Request, res: Response)
   res.json({ success: true, organization: org });
 });
 
+// LLM provider configuration is server-only, env-driven config. These keys are
+// accepted on reads (older rows may still carry per-org values) but must never
+// be writable from a request body — otherwise a crafted PATCH points the
+// pipeline at an attacker-controlled endpoint, which is an SSRF + credential
+// exfiltration primitive. Stripped here, ahead of any destructuring, so the
+// values cannot reach the persistence layer even if this list drifts.
+const SERVER_ONLY_ASSISTANT_KEYS = ['llmProvider', 'openaiBaseUrl', 'openaiApiKey', 'openaiModel'] as const;
+
+function stripServerOnlyAssistantKeys(body: any): any {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
+  const clean: any = {};
+  for (const key of Object.keys(body)) {
+    if (!(SERVER_ONLY_ASSISTANT_KEYS as readonly string[]).includes(key)) {
+      clean[key] = body[key];
+    }
+  }
+  return clean;
+}
+
 // PATCH /api/assistant-settings - Update settings for authenticated user's organization
 app.patch('/api/assistant-settings', requireAuth, async (req: Request, res: Response) => {
   const orgId = req.user!.organizationId;
   const userId = req.user!.id;
-  const { aiTone, autoConfirmRoutine, bufferMinutesBetweenJobs, workingHours, emergencyKeywords, llmProvider, openaiBaseUrl, openaiApiKey, openaiModel } = req.body;
+  const {
+    aiTone,
+    autoConfirmRoutine,
+    bufferMinutesBetweenJobs,
+    workingHours,
+    emergencyKeywords,
+  } = stripServerOnlyAssistantKeys(req.body);
+
+  if (SERVER_ONLY_ASSISTANT_KEYS.some(key => key in (req.body || {}))) {
+    console.warn(
+      `Ignoring server-only assistant_settings keys (${SERVER_ONLY_ASSISTANT_KEYS.join(', ')}) in PATCH from user ${userId}.`
+    );
+  }
 
   if (pool) {
     try {
@@ -1795,10 +2007,6 @@ app.patch('/api/assistant-settings', requireAuth, async (req: Request, res: Resp
     bufferMinutesBetweenJobs: bufferMinutesBetweenJobs || inMemorySettings[orgId]?.bufferMinutesBetweenJobs,
     workingHours: workingHours || inMemorySettings[orgId]?.workingHours,
     emergencyKeywords: emergencyKeywords || inMemorySettings[orgId]?.emergencyKeywords,
-    llmProvider: llmProvider || inMemorySettings[orgId]?.llmProvider,
-    openaiBaseUrl: openaiBaseUrl || inMemorySettings[orgId]?.openaiBaseUrl,
-    openaiApiKey: openaiApiKey || inMemorySettings[orgId]?.openaiApiKey,
-    openaiModel: openaiModel || inMemorySettings[orgId]?.openaiModel,
   };
 
   res.json({ success: true, settings: inMemorySettings[orgId] });
@@ -2206,7 +2414,15 @@ You MUST return a JSON object with the following schema:
 }
 
 // API: Process incoming SMS (Simulator & Client)
-app.post('/api/sms/process', async (req: Request, res: Response) => {
+// Authenticated + rate limited: this endpoint runs the LLM pipeline, so leaving
+// it public let anyone burn provider credits anonymously. The only caller is
+// src/App.tsx handleProcessCustomerSms, which renders exclusively inside
+// <ProtectedRoute> and goes through apiFetch (credentials: 'include' + Bearer).
+app.post(
+  '/api/sms/process',
+  requireAuth,
+  rateLimitPerOrg({ scope: 'sms-process' }),
+  async (req: Request, res: Response) => {
   try {
     const {
       incomingText,
@@ -2223,6 +2439,12 @@ app.post('/api/sms/process', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'incomingText is required' });
     }
 
+    // `settings` is client-supplied and is fed straight into the LLM pipeline
+    // (provider, base URL, API key). Leaving those client-writable would
+    // re-create the SSRF primitive that the test-endpoint route used to expose,
+    // so they are dropped here and the server falls back to env-driven config.
+    const safeSettings = stripServerOnlyAssistantKeys(settings);
+
     const result = await runSmsAssistant({
       incomingText,
       customerName,
@@ -2231,7 +2453,7 @@ app.post('/api/sms/process', async (req: Request, res: Response) => {
       conversationHistory,
       existingBookings,
       services,
-      settings,
+      settings: safeSettings,
     });
 
     return res.json({
@@ -2572,9 +2794,19 @@ app.post('/webhooks/twilio/voice-status', twilioFormParser, verifyTwilioSignatur
 });
 
 // API: Process simulated missed call to auto-SMS
-app.post('/api/missed-call/process', async (req: Request, res: Response) => {
+// Authenticated + rate limited for the same reason as /api/sms/process: it
+// runs an LLM call. No live client caller exists (the simulate-call modal is
+// never mounted and issues no fetch); the URL shown in SettingsView is display
+// text only, and real inbound calls arrive via /webhooks/twilio/voice.
+app.post(
+  '/api/missed-call/process',
+  requireAuth,
+  rateLimitPerOrg({ scope: 'missed-call-process' }),
+  async (req: Request, res: Response) => {
   try {
-    const { callerName, callerPhone, voicemailTranscript, settings = {} } = req.body;
+    const { callerName, callerPhone, voicemailTranscript, settings: rawSettings = {} } = req.body;
+    // Drop client-supplied LLM provider/base URL/API key — see /api/sms/process.
+    const settings = stripServerOnlyAssistantKeys(rawSettings);
 
     let autoSms = `Hey ${callerName || 'there'}! Mark with ${settings.businessName || 'Apex Plumbing'} here. I'm currently on a service call and couldn't grab the phone. Need help with a plumbing or mechanical issue? Reply here and I'll get you on the schedule!`;
 
@@ -2644,38 +2876,8 @@ Keep it under 240 chars, friendly, acknowledging what they mentioned in the voic
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
-});
-
-// API: Test OpenAI-compatible endpoint connectivity
-app.post('/api/ai/test-endpoint', async (req: Request, res: Response) => {
-  const { baseUrl, apiKey, model } = req.body;
-  try {
-    const start = Date.now();
-    const result = await callOpenAiCompatibleChat({
-      baseUrl,
-      apiKey,
-      model,
-      systemPrompt: 'You are an automated API health validator. Reply with valid JSON.',
-      userPrompt: 'Confirm connectivity. Reply strictly in JSON: {"status": "ok", "message": "Connection established successfully"}',
-      jsonMode: true,
-    });
-    const latency = Date.now() - start;
-    const parsed = JSON.parse(result.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim());
-    return res.json({
-      success: true,
-      latencyMs: latency,
-      endpoint: baseUrl || DEFAULT_OPENAI_BASE_URL,
-      model: model || DEFAULT_OPENAI_MODEL,
-      response: parsed,
-    });
-  } catch (err: any) {
-    return res.status(400).json({
-      success: false,
-      error: err.message || 'Failed to connect to OpenAI-compatible endpoint',
-    });
   }
-});
-
+);
 // Health check
 app.get('/api/health', (req: Request, res: Response) => {
   res.json({

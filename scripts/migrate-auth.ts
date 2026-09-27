@@ -12,11 +12,21 @@ if (!connectionString) {
   process.exit(1);
 }
 
-// Simple secure hash helper using PBKDF2 with salt
+// Password hash helper — must stay identical to the one in server.ts so a seed
+// script never creates a user the login path cannot verify. The stored format
+// is `pbkdf2-sha512$<iterations>$<saltHex>$<hashHex>`; server.ts still verifies
+// legacy `salt:hash` values at 1,000 iterations and upgrades them on first
+// login, so previously-seeded users are not locked out by this bump.
+const PBKDF2_ALGORITHM = 'sha512';
+const PBKDF2_KEYLEN = 64;
+const PBKDF2_SALT_BYTES = 16;
+const PBKDF2_PREFIX = 'pbkdf2-sha512';
+const PBKDF2_ITERATIONS = 210_000;
+
 export function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
+  const salt = crypto.randomBytes(PBKDF2_SALT_BYTES).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, PBKDF2_ALGORITHM).toString('hex');
+  return `${PBKDF2_PREFIX}$${PBKDF2_ITERATIONS}$${salt}$${hash}`;
 }
 
 async function run() {
