@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { User, TradeType, AssistantSettings, TradeService, Organization } from '../types';
 import { RidgeLineLogo } from '../components/RidgeLineLogo';
-import { useNavigate } from 'react-router-dom';
 import { AIIcon } from '../components/AIIcon';
 import { apiFetch } from '../lib/apiFetch';
 
@@ -60,7 +59,6 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   onComplete,
   showToast,
 }) => {
-  const navigate = useNavigate();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -169,9 +167,8 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
         isPopular: true,
       }));
 
-      showToast(`Setup complete! Welcome to RidgeLine, ${technicianName}.`);
+      // App's handleOnboardingComplete owns the success toast and the redirect to the dashboard.
       onComplete(createdOrg, createdSettings, formattedServices);
-      navigate('/');
     } catch (err: any) {
       showToast('Error saving onboarding data');
     } finally {
@@ -181,7 +178,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
-      <div className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl border border-neutral-200 overflow-hidden flex flex-col h-[700px]">
+      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl border border-neutral-200 overflow-hidden flex flex-col h-[700px]">
         
         {/* Top Header / Progress Indicator */}
         <div className="border-b border-neutral-100 bg-white px-8 py-6">
@@ -189,16 +186,16 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
             <div className="flex items-center gap-3">
               <RidgeLineLogo size={36} />
               <div className="h-6 w-px bg-neutral-200" />
-              <span className="text-sm font-bold text-neutral-900 uppercase tracking-widest font-head">
+              <span className="text-sm font-semibold text-neutral-900 font-head">
                 Business Setup
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-tighter">Step</span>
-              <span className="h-7 w-7 rounded-full bg-neutral-900 text-white flex items-center justify-center text-xs font-bold font-mono count-up">
+              <span className="text-xs text-neutral-400 font-medium">Step</span>
+              <span className="h-7 w-7 rounded-full bg-neutral-900 text-white flex items-center justify-center text-xs font-semibold">
                 {step}
               </span>
-              <span className="text-xs font-bold text-neutral-400 uppercase tracking-tighter font-mono">of 4</span>
+              <span className="text-xs text-neutral-400 font-medium">of 4</span>
             </div>
           </div>
 
@@ -224,39 +221,39 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
           
           {/* STEP 1: TRADE & IDENTITY */}
           {step === 1 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div>
-                <h3 className="text-2xl font-black text-neutral-900 tracking-tight flex items-center gap-3 font-head">
-                  <Building2 className="h-7 w-7 text-neutral-400" />
+                <h3 className="text-2xl font-bold text-neutral-900 flex items-center gap-3 font-head">
+                  <Building2 className="h-6 w-6 text-neutral-400" />
                   Your Business Profile
                 </h3>
-                <p className="text-sm text-neutral-500 mt-2 font-medium">
+                <p className="text-sm text-neutral-500 mt-2">
                   RidgeLine uses these details to represent you accurately when speaking with clients.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm">
                 <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-black uppercase tracking-widest text-neutral-500 mb-2">
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
                     Company Name
                   </label>
                   <input
                     type="text"
                     value={businessName}
                     onChange={e => setBusinessName(e.target.value)}
-                    className="w-full rounded-xl border-2 border-neutral-100 bg-neutral-50/50 p-3.5 text-sm font-bold text-neutral-900 focus:border-neutral-900 focus:bg-white focus:outline-none transition-all"
+                    className="w-full rounded-lg border border-neutral-300 py-2.5 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-colors"
                     placeholder="e.g. Apex Plumbing & Mechanical"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black uppercase tracking-widest text-neutral-500 mb-2">
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
                     Trade Specialization
                   </label>
                   <select
                     value={tradeType}
                     onChange={e => handleTradeChange(e.target.value as TradeType)}
-                    className="w-full rounded-xl border-2 border-neutral-100 bg-neutral-50/50 p-3.5 text-sm font-bold text-neutral-900 focus:border-neutral-900 focus:bg-white focus:outline-none transition-all appearance-none"
+                    className="w-full rounded-lg border border-neutral-300 py-2.5 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-colors bg-white appearance-none"
                   >
                     <option value="plumbing">Plumbing &amp; Water Systems</option>
                     <option value="electrical">Electrical &amp; Lighting</option>
@@ -267,33 +264,33 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black uppercase tracking-widest text-neutral-500 mb-2">
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
                     Primary Technician
                   </label>
                   <input
                     type="text"
                     value={technicianName}
                     onChange={e => setTechnicianName(e.target.value)}
-                    className="w-full rounded-xl border-2 border-neutral-100 bg-neutral-50/50 p-3.5 text-sm font-bold text-neutral-900 focus:border-neutral-900 focus:bg-white focus:outline-none transition-all"
+                    className="w-full rounded-lg border border-neutral-300 py-2.5 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-colors"
                     placeholder="e.g. Mark"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black uppercase tracking-widest text-neutral-500 mb-2">
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
                     License Number
                   </label>
                   <input
                     type="text"
                     value={licenseNumber}
                     onChange={e => setLicenseNumber(e.target.value)}
-                    className="w-full rounded-xl border-2 border-neutral-100 bg-neutral-50/50 p-3.5 text-sm font-bold text-neutral-900 focus:border-neutral-900 focus:bg-white focus:outline-none transition-all font-mono"
+                    className="w-full rounded-lg border border-neutral-300 py-2.5 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-colors"
                     placeholder="e.g. CA-PLUMB-982104"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-black uppercase tracking-widest text-neutral-500 mb-2">
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
                     Service Radius (Miles)
                   </label>
                   <div className="relative">
@@ -301,11 +298,11 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                       type="number"
                       value={serviceRadiusMiles}
                       onChange={e => setServiceRadiusMiles(Number(e.target.value))}
-                      className="w-full rounded-xl border-2 border-neutral-100 bg-neutral-50/50 p-3.5 text-sm font-bold text-neutral-900 focus:border-neutral-900 focus:bg-white focus:outline-none transition-all"
+                      className="w-full rounded-lg border border-neutral-300 py-2.5 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900 transition-colors"
                       min={5}
                       max={150}
                     />
-                    <span className="absolute right-4 top-3.5 text-neutral-400 font-bold">mi</span>
+                    <span className="absolute right-3 top-2.5 text-neutral-400 text-sm">mi</span>
                   </div>
                 </div>
               </div>
@@ -314,13 +311,13 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
           {/* STEP 2: AI VOICE & RULES */}
           {step === 2 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div>
-                <h3 className="text-2xl font-black text-neutral-900 tracking-tight flex items-center gap-3 font-head">
-                  <AIIcon className="h-7 w-7 text-indigo-500" />
+                <h3 className="text-2xl font-bold text-neutral-900 flex items-center gap-3 font-head">
+                  <AIIcon className="h-6 w-6 text-indigo-600" />
                   AI Tone &amp; Rules
                 </h3>
-                <p className="text-sm text-neutral-500 mt-2 font-medium">
+                <p className="text-sm text-neutral-500 mt-2">
                   Configure how RidgeLine interacts with your customers.
                 </p>
               </div>
@@ -334,25 +331,25 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                   <div
                     key={t.id}
                     onClick={() => setAiTone(t.id as any)}
-                    className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex items-start justify-between gap-4 ${
+                    className={`p-4 rounded-lg border cursor-pointer transition-colors flex items-start justify-between gap-4 ${
                       aiTone === t.id
-                        ? 'border-neutral-900 bg-neutral-900 text-white shadow-lg scale-[1.02]'
-                        : 'border-neutral-100 bg-neutral-50/50 text-neutral-900 hover:border-neutral-200'
+                        ? 'border-neutral-900 bg-white shadow-sm'
+                        : 'border-neutral-200 bg-white hover:border-neutral-300'
                     }`}
                   >
                     <div className="flex-1">
-                      <span className={`font-black text-sm uppercase tracking-wider ${aiTone === t.id ? 'text-white' : 'text-neutral-900'}`}>{t.label}</span>
-                      <p className={`text-xs mt-1 font-medium ${aiTone === t.id ? 'text-neutral-300' : 'text-neutral-500'}`}>{t.desc}</p>
+                      <span className="text-sm font-semibold text-neutral-900">{t.label}</span>
+                      <p className="text-xs mt-1 text-neutral-500">{t.desc}</p>
                     </div>
-                    {aiTone === t.id && <CheckCircle2 className="h-6 w-6 text-white shrink-0" />}
+                    {aiTone === t.id && <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />}
                   </div>
                 ))}
               </div>
 
-              <div className="p-6 rounded-2xl border-2 border-neutral-100 bg-white shadow-sm flex items-center justify-between gap-6">
+              <div className="p-4 rounded-lg border border-neutral-200 bg-white flex items-center justify-between gap-6">
                 <div>
-                  <h4 className="text-sm font-black text-neutral-900 uppercase tracking-widest">Auto-Confirm Bookings</h4>
-                  <p className="text-xs text-neutral-500 mt-1 font-medium leading-relaxed">
+                  <h4 className="text-sm font-semibold text-neutral-900">Auto-Confirm Bookings</h4>
+                  <p className="text-xs text-neutral-500 mt-1">
                     RidgeLine will automatically add routine jobs to your calendar when a customer agrees to a slot.
                   </p>
                 </div>
@@ -368,20 +365,20 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
           {/* STEP 3: PRICE BOOK */}
           {step === 3 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-2xl font-black text-neutral-900 tracking-tight flex items-center gap-3 font-head">
-                    <DollarSign className="h-7 w-7 text-emerald-500" />
+                  <h3 className="text-2xl font-bold text-neutral-900 flex items-center gap-3 font-head">
+                    <DollarSign className="h-6 w-6 text-emerald-600" />
                     Service Price Book
                   </h3>
-                  <p className="text-sm text-neutral-500 mt-2 font-medium">
+                  <p className="text-sm text-neutral-500 mt-2">
                     Set your standard rates for common jobs.
                   </p>
                 </div>
                 <button 
                   onClick={handleAddService}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 transition-all shadow-md active:scale-95 cursor-pointer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-neutral-900 text-white rounded-lg text-sm font-semibold hover:bg-neutral-800 transition-colors shadow-sm cursor-pointer"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Add Service</span>
@@ -390,12 +387,12 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
               <div className="space-y-4">
                 {services.length === 0 ? (
-                  <div className="p-12 text-center rounded-3xl border-2 border-dashed border-neutral-200 bg-neutral-50/50">
+                  <div className="p-10 text-center rounded-lg border border-dashed border-neutral-200 bg-neutral-50">
                     <DollarSign className="h-10 w-10 text-neutral-300 mx-auto mb-4" />
-                    <p className="text-sm font-bold text-neutral-500">Your price book is empty.</p>
+                    <p className="text-sm text-neutral-500">Your price book is empty.</p>
                     <button 
                       onClick={handleAddService}
-                      className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-neutral-200 rounded-xl text-xs font-bold text-neutral-900 hover:border-neutral-900 transition-all cursor-pointer"
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-neutral-200 rounded-lg text-sm font-semibold text-neutral-900 hover:bg-neutral-50 transition-colors cursor-pointer"
                     >
                       <Plus className="h-4 w-4" />
                       <span>Add First Service</span>
@@ -403,7 +400,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                   </div>
                 ) : (
                   services.map((srv, idx) => (
-                  <div key={idx} className="group relative p-6 rounded-2xl border-2 border-neutral-100 bg-neutral-50/50 hover:bg-white hover:border-neutral-200 transition-all">
+                  <div key={idx} className="group relative p-4 rounded-lg border border-neutral-200 bg-white transition-colors">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex-1 space-y-3">
                         <input
@@ -412,7 +409,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                           onChange={e => {
                             setServices(prev => prev.map((s, i) => i === idx ? { ...s, title: e.target.value } : s));
                           }}
-                          className="w-full bg-transparent text-sm font-black text-neutral-900 focus:outline-none placeholder:text-neutral-300 font-head"
+                          className="w-full bg-transparent text-sm font-semibold text-neutral-900 focus:outline-none placeholder:text-neutral-300"
                           placeholder="Service Title"
                         />
                         <input
@@ -421,13 +418,13 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                           onChange={e => {
                             setServices(prev => prev.map((s, i) => i === idx ? { ...s, desc: e.target.value } : s));
                           }}
-                          className="w-full bg-transparent text-xs text-neutral-500 font-medium focus:outline-none placeholder:text-neutral-300"
+                          className="w-full bg-transparent text-xs text-neutral-500 focus:outline-none placeholder:text-neutral-300"
                           placeholder="Brief description..."
                         />
                       </div>
                       <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border-2 border-neutral-100">
-                          <span className="text-neutral-400 font-black">$</span>
+                        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-neutral-300">
+                          <span className="text-neutral-400 text-sm">$</span>
                           <input
                             type="number"
                             value={srv.price}
@@ -435,10 +432,10 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                               const val = Number(e.target.value);
                               setServices(prev => prev.map((s, i) => i === idx ? { ...s, price: val } : s));
                             }}
-                            className="w-16 text-right font-black text-neutral-900 focus:outline-none bg-transparent font-mono count-up tabular-nums"
+                            className="w-16 text-right text-sm text-neutral-900 focus:outline-none bg-transparent tabular-nums"
                           />
                         </div>
-                        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border-2 border-neutral-100">
+                        <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-neutral-300">
                           <Clock className="h-4 w-4 text-neutral-400" />
                           <input
                             type="number"
@@ -448,9 +445,9 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
                               const val = Number(e.target.value);
                               setServices(prev => prev.map((s, i) => i === idx ? { ...s, duration: val } : s));
                             }}
-                            className="w-12 text-center font-black text-neutral-900 focus:outline-none bg-transparent font-mono count-up tabular-nums"
+                            className="w-12 text-center text-sm text-neutral-900 focus:outline-none bg-transparent tabular-nums"
                           />
-                          <span className="text-neutral-400 text-xs font-bold uppercase">hr</span>
+                          <span className="text-neutral-400 text-xs">hr</span>
                         </div>
                         <button 
                           onClick={() => handleRemoveService(idx)}
@@ -468,53 +465,53 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
           {/* STEP 4: TELEPHONY */}
           {step === 4 && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div>
-                <h3 className="text-2xl font-black text-neutral-900 tracking-tight flex items-center gap-3 font-head">
-                  <Radio className="h-7 w-7 text-indigo-500" />
+                <h3 className="text-2xl font-bold text-neutral-900 flex items-center gap-3 font-head">
+                  <Radio className="h-4 w-4 text-neutral-400" />
                   Telephony Setup
                 </h3>
-                <p className="text-sm text-neutral-500 mt-2 font-medium">
+                <p className="text-sm text-neutral-500 mt-2">
                   Connect your business line to the RidgeLine dispatch engine.
                 </p>
               </div>
 
               <div className="space-y-6">
-                <div className="p-8 rounded-3xl border-2 border-indigo-100 bg-indigo-50/50 shadow-inner">
-                  <label className="block text-[11px] font-black uppercase tracking-widest text-indigo-600 mb-4">
+                <div className="p-6 rounded-lg border border-neutral-200 bg-white">
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
                     Your RidgeLine Smart Number
                   </label>
-                  <div className="flex items-center gap-4 bg-white p-6 rounded-2xl shadow-md border-2 border-white">
-                    <div className="h-12 w-12 rounded-xl bg-neutral-900 text-white flex items-center justify-center">
+                  <div className="flex items-center gap-3 bg-neutral-50 border border-neutral-200 p-4 rounded-lg">
+                    <div className="h-10 w-10 rounded-lg bg-neutral-900 text-white flex items-center justify-center">
                       <Phone className="h-6 w-6" />
                     </div>
                     <input
                       type="text"
                       value={twilioNumber}
                       onChange={e => setTwilioNumber(e.target.value)}
-                      className="flex-1 bg-transparent text-2xl font-black text-neutral-900 tracking-tighter focus:outline-none font-mono"
+                      className="flex-1 bg-transparent text-lg text-neutral-900 focus:outline-none tabular-nums"
                     />
                   </div>
-                  <p className="text-xs text-indigo-700/60 mt-4 font-bold leading-relaxed italic">
+                  <p className="text-xs text-neutral-500 mt-2">
                     Clients will text this number to book. Inbound calls are auto-transcribed for the AI.
                   </p>
                 </div>
 
-                <div className="p-8 rounded-3xl border-2 border-neutral-100 bg-white">
-                  <label className="block text-[11px] font-black uppercase tracking-widest text-neutral-400 mb-4">
+                <div className="p-6 rounded-lg border border-neutral-200 bg-white">
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1.5">
                     Emergency Call Forwarding
                   </label>
-                  <div className="flex items-center gap-4 border-2 border-neutral-100 p-6 rounded-2xl bg-neutral-50/50 focus-within:border-neutral-900 focus-within:bg-white transition-all">
-                    <Radio className="h-6 w-6 text-neutral-400" />
+                  <div className="flex items-center gap-3 border border-neutral-300 p-3 rounded-lg bg-white focus-within:border-neutral-900 transition-colors">
+                    <Radio className="h-4 w-4 text-neutral-400" />
                     <input
                       type="text"
                       value={forwardNumber}
                       onChange={e => setForwardNumber(e.target.value)}
-                      className="flex-1 bg-transparent text-xl font-black text-neutral-900 tracking-tighter focus:outline-none font-mono"
+                      className="flex-1 bg-transparent text-sm text-neutral-900 focus:outline-none tabular-nums"
                       placeholder="+1 (555) 000-0000"
                     />
                   </div>
-                  <p className="text-xs text-neutral-400 mt-4 font-medium leading-relaxed">
+                  <p className="text-xs text-neutral-500 mt-2">
                     Active emergency calls are bridged directly to your personal mobile.
                   </p>
                 </div>
@@ -525,11 +522,11 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
         </div>
 
         {/* Footer Navigation Buttons */}
-        <div className="border-t border-neutral-100 bg-white px-8 py-8 flex items-center justify-between">
+        <div className="border-t border-neutral-100 bg-white px-8 py-5 flex items-center justify-between">
           {step > 1 ? (
             <button
               onClick={() => setStep((step - 1) as any)}
-              className="inline-flex items-center gap-2.5 px-6 py-3.5 text-xs font-black uppercase tracking-widest rounded-2xl border-2 border-neutral-100 bg-white hover:bg-neutral-50 text-neutral-400 hover:text-neutral-900 transition-all active:scale-95"
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800 transition-colors cursor-pointer"
             >
               <ArrowLeft className="h-4 w-4" />
               <span>Previous</span>
@@ -541,7 +538,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
           {step < 4 ? (
             <button
               onClick={() => setStep((step + 1) as any)}
-              className="inline-flex items-center gap-2.5 px-8 py-3.5 text-xs font-black uppercase tracking-widest rounded-2xl bg-neutral-900 text-white hover:bg-neutral-800 transition-all shadow-xl active:scale-95 group"
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 transition-colors shadow-sm cursor-pointer group"
             >
               <span>Next Step</span>
               <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
@@ -550,7 +547,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
             <button
               onClick={handleFinishOnboarding}
               disabled={isSubmitting}
-              className="inline-flex items-center gap-2.5 px-10 py-3.5 text-xs font-black uppercase tracking-widest rounded-2xl bg-emerald-500 text-white hover:bg-emerald-600 transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:scale-100"
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 transition-colors shadow-sm cursor-pointer disabled:opacity-70"
             >
               {isSubmitting ? (
                 <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -564,7 +561,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
 
       </div>
       
-      <p className="mt-8 text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">
+      <p className="mt-6 text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
         RidgeLine Autonomous Dispatch Engine v2.0
       </p>
     </div>
