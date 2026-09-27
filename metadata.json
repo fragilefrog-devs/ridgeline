@@ -1,0 +1,8 @@
+{
+  "name": "RidgeLine - AI Scheduling \u0026 Dispatch Assistant",
+  "description": "AI-powered scheduling and dispatch assistant for solo tradespeople. Runs booking conversations over SMS, auto-confirms jobs, parses natural-language reschedules, and converts missed calls into revenue.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
