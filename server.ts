@@ -18,7 +18,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+// Hosts (Render, Heroku, PaaS) inject a dynamic port via PORT, so honour it and keep 3000 as the local-dev fallback.
+const injectedPort = Number(process.env.PORT);
+const PORT = Number.isInteger(injectedPort) && injectedPort > 0 && injectedPort <= 65535 ? injectedPort : 3000;
 
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || 'ridgeline-jwt-super-secret-key-2026-production';
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'ridgeline-cookie-signing-secret-2026';
