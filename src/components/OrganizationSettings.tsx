@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Organization, AssistantSettings, TradeService, TradeType } from '../types';
 import { formatCurrency } from '../lib/utils';
+import { apiFetch } from '../lib/apiFetch';
 import { RidgeLineLogo } from './RidgeLineLogo';
 import { AIIcon } from './AIIcon';
 
@@ -150,8 +151,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
     setIsTestingWebhook(true);
     setTestResult(null);
     try {
-      const res = await fetch('/api/health');
-      const data = await res.json();
+      const data = await apiFetch('/api/health');
       if (data.status === 'healthy') {
         setTestResult('Webhook live and responding with 200 OK');
       } else {
@@ -168,7 +168,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
     setIsTestingLlm(true);
     setLlmTestStatus(null);
     try {
-      const res = await fetch('/api/ai/test-endpoint', {
+      const data = await apiFetch('/api/ai/test-endpoint', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -177,8 +177,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
           model: aiForm.openaiModel || 'gemini/gemini-3.8-flash',
         }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      if (data.success) {
         setLlmTestStatus({
           success: true,
           message: `Connected successfully to ${data.model} at endpoint!`,

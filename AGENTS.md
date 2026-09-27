@@ -6,7 +6,7 @@ Express backend (`server.ts`, ~2.9k lines), Neon Postgres, Twilio, Gemini / Open
 ## Commands
 
 ```bash
-npm install          # node_modules is NOT checked in — do this first
+npm install --legacy-peer-deps   # REQUIRED, see esbuild note below
 npm run dev          # tsx server.ts  ->  http://localhost:3000  (serves UI + API together)
 npm run build        # vite build -> dist/  (frontend only; no server build step)
 npm start            # identical to `dev`; differs ONLY via NODE_ENV=production
@@ -21,8 +21,11 @@ npm run lint         # this is just `tsc --noEmit`
 - `DISABLE_HMR=true` turns off HMR *and* file watching (AI Studio convention; see the comment
   block in `vite.config.ts` — don't "fix" it).
 - There is **no test runner, no `test` script, no ESLint, no Prettier, no CI, no husky.**
-  `npm run lint` being `tsc --noEmit` is the entire verification story. Expect the baseline may
-  not be clean; capture `tsc` output before your change and diff against it rather than assuming green.
+  `npm run lint` being `tsc --noEmit` is the entire verification story. The baseline **is clean**
+  (verified: `npx tsc --noEmit` exits 0), so any error you see is yours — don't excuse it.
+- **Plain `npm install` fails with ERESOLVE** (verified): `package.json` pins `esbuild@^0.25.0` but
+  `vite@8.3.1` declares `peerOptional esbuild@^0.27.0 || ^0.28.0`. Always use `--legacy-peer-deps`.
+  This is why `bun.lock` is the real lockfile.
 - `tsconfig.json` has no `include`/`files`, so `tsc` typechecks **everything together** —
   `server.ts`, `neon.ts`, `hello.ts`, `scripts/*.ts`, `src/**`. `types: ["vite/client"]` omits
   Node globals that `server.ts` and `scripts/*` use. No `strict`. Lockfile is **TypeScript 7.x**.
@@ -50,6 +53,13 @@ supabase/migrations/  20260927000000_init_ridgeline_schema.sql
   `/onboarding`, and `*`. All seven main views (overview/dispatch/sms/missed_calls/customers/
   services/settings) are the `activeTab` state var in `App.tsx`. Switching views does not change
   the URL, and you cannot deep-link a view. Don't add `<Route>`s and expect `activeTab` to follow.
+- **All API calls go through `apiFetch()` (`src/lib/apiFetch.ts`)** — never bare `fetch(...).json()`.
+  It checks `res.ok` and `content-type` first, so a missing/misrouted backend reports a readable
+  error instead of `Unexpected token 'T', "The page c"... is not valid JSON`. Keep new call sites on it.
+- **`server.ts` ends `startServer()` with a JSON 404 for unmatched `/api/*`** (just above the Vite
+  middleware). Without it, an unknown API path falls through to the SPA and returns `index.html` with
+  **HTTP 200**, making a missing endpoint look like a success. Register new routes at module scope
+  (before `startServer()` runs), not inside it, or the 404 will swallow them.
 - `neon.ts` + `hello.ts` + `.neon` are a **vestigial Neon Functions scaffold**. The real backend is
   Express. Nothing imports `hello.ts` — don't build on it.
 
@@ -137,3 +147,10 @@ IDs look real and survive restarts.
   expose them on a public origin.
 - `src/App.tsx` seeds every collection from `src/mockData.ts` and then overwrites from
   `/api/neon/data`. There are two sources of truth for each list during startup.
+- **This is one Node process, not a static site.** `server.ts` serves the UI *and* the API, so the
+  host must run `npm start`. A static-only host (e.g. a Vercel static deploy with no `vercel.json`
+  and no functions) serves `index.html` for `/` and returns Vercel's `text/plain` 404 body
+  `The page could not be found` for **every** `/api/*` call — the app shell loads, then every
+  request dies in `res.json()`. If the app "loads but all data is broken", check that the backend
+  is actually deployed before debugging the frontend. There is no `vercel.json`/`render.yaml`/
+  `Dockerfile` in the repo — deployment is currently unconfigured and host-specific.

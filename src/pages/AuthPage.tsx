@@ -13,6 +13,7 @@ import { User, TradeType } from '../types';
 import { RidgeLineLogo } from '../components/RidgeLineLogo';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AIIcon } from '../components/AIIcon';
+import { apiFetch } from '../lib/apiFetch';
 
 interface AuthPageProps {
   onAuthSuccess: (user: User) => void;
@@ -58,16 +59,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         ? { email, password }
         : { email, password, fullName, trade };
 
-      const res = await fetch(endpoint, {
+      const data = await apiFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Authentication failed');
       }
 
@@ -89,13 +88,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const res = await fetch('/api/auth/login', {
+      const data = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email: 'mark@apexplumbingpro.com', password: 'Password123!' }),
       });
-      const data = await res.json();
       if (data.success && data.user) {
         if (data.token) {
           localStorage.setItem('ridgeline_session_token', data.token);

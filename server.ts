@@ -2861,6 +2861,26 @@ async function initDb() {
 // Vite Middleware for development vs Static files in production
 async function startServer() {
   await initDb();
+
+  // Unmatched /api/* paths must fail as JSON, never fall through to the SPA.
+  // Every /api/* route is registered at module load (before startServer runs),
+  // so anything still reaching here is genuinely unknown. In dev the Vite
+  // middleware (appType: 'spa') and in production the app.get('*') catch-all
+  // would otherwise answer an unknown API path with index.html + HTTP 200,
+  // making a missing endpoint indistinguishable from a successful call.
+  // This sits above both so dev and production behave identically.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (!req.path.startsWith('/api/')) {
+      return next();
+    }
+    return res.status(404).json({
+      error: `No API route matches ${req.method} ${req.path}`,
+      method: req.method,
+      path: req.path,
+      hint: 'Check the path and HTTP method against the /api/* routes in server.ts.',
+    });
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

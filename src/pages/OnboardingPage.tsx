@@ -16,6 +16,7 @@ import { User, TradeType, AssistantSettings, TradeService, Organization } from '
 import { RidgeLineLogo } from '../components/RidgeLineLogo';
 import { useNavigate } from 'react-router-dom';
 import { AIIcon } from '../components/AIIcon';
+import { apiFetch } from '../lib/apiFetch';
 
 interface OnboardingPageProps {
   user: User;
@@ -104,7 +105,7 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
   const handleFinishOnboarding = async () => {
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/auth/complete-onboarding', {
+      const data = await apiFetch('/api/auth/complete-onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -128,8 +129,6 @@ export const OnboardingPage: React.FC<OnboardingPageProps> = ({
           })),
         }),
       });
-
-      const data = await res.json();
 
       const createdOrg: Organization = {
         id: data.organizationId || `org-${Date.now()}`,

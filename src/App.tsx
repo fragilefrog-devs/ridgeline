@@ -35,6 +35,7 @@ import {
   Plus
 } from 'lucide-react';
 import { formatCurrency } from './lib/utils';
+import { apiFetch } from './lib/apiFetch';
 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthPage } from './pages/AuthPage';
@@ -100,19 +101,17 @@ export default function App() {
         headers['Authorization'] = `Bearer ${storedToken}`;
       }
 
-      const [dataRes, statusRes] = await Promise.all([
-        fetch('/api/neon/data', { headers, credentials: 'include' }),
-        fetch('/api/neon/status')
+      const [data, status] = await Promise.all([
+        apiFetch('/api/neon/data', { headers }).catch(() => null),
+        apiFetch('/api/neon/status').catch(() => null)
       ]);
 
-      if (statusRes.ok) {
-        const status = await statusRes.json();
+      if (status) {
         setNeonConnected(status.connected);
         if (status.latencyMs) setNeonLatency(status.latencyMs);
       }
 
-      if (dataRes.ok) {
-        const data = await dataRes.json();
+      if (data) {
         if (data.organizations?.length > 0) {
           setOrganizations(data.organizations);
           setCurrentOrg(data.organizations[0]);
@@ -160,8 +159,7 @@ export default function App() {
           headers['Authorization'] = `Bearer ${storedToken}`;
         }
 
-        const res = await fetch('/api/auth/me', { headers, credentials: 'include' });
-        const data = await res.json();
+        const data = await apiFetch('/api/auth/me', { headers });
         if (data.user) {
           setCurrentUser(data.user);
           localStorage.setItem('ridgeline_user_email', data.user.email);
@@ -282,7 +280,7 @@ export default function App() {
     const thread = threads.find(t => t.id === threadId);
     
     try {
-      const response = await fetch('/api/sms/process', {
+      const data = await apiFetch('/api/sms/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -297,11 +295,6 @@ export default function App() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Server returned non-200');
-      }
-
-      const data = await response.json();
       return {
         replyText: data.replyText,
         actionTag: data.actionTag,
@@ -484,13 +477,12 @@ export default function App() {
       };
 
       try {
-        const res = await fetch('/api/bookings', {
+        const data = await apiFetch('/api/bookings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify(newBookingData),
         });
-        const data = await res.json();
         if (data.booking) {
           setBookings(prev => [data.booking, ...prev]);
           setThreads(prev => prev.map(t => t.id === thread.id ? { ...t, bookingId: data.booking.id, status: 'booked' } : t));
@@ -957,13 +949,12 @@ export default function App() {
                   const id = `srv-${Date.now()}`;
                   setServices(prev => [...prev, { ...newSrv, id }]);
                   try {
-                    const res = await fetch('/api/services', {
+                    const data = await apiFetch('/api/services', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       credentials: 'include',
                       body: JSON.stringify(newSrv),
                     });
-                    const data = await res.json();
                     if (data.service) {
                       setServices(prev => prev.map(s => s.id === id ? data.service : s));
                     }
@@ -997,13 +988,12 @@ export default function App() {
           onClose={() => setIsNewBookingOpen(false)}
           onAddBooking={async (newJob) => {
             try {
-              const res = await fetch('/api/bookings', {
+              const data = await apiFetch('/api/bookings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify(newJob),
               });
-              const data = await res.json();
               if (data.booking) {
                 setBookings(prev => [data.booking, ...prev]);
                 showToast(`Job for ${newJob.customerName} saved to Neon Lakebase Postgres!`);
