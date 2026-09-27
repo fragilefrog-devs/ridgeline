@@ -209,18 +209,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Twilio & AI */}
+              {/* AI Dispatcher */}
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={activeTab === 'settings' && (settingsSubTab === 'twilio' || settingsSubTab === 'ai_dispatcher')}
+                  isActive={activeTab === 'settings' && settingsSubTab === 'ai_dispatcher'}
                   onClick={() => {
                     setActiveTab('settings');
-                    setSettingsSubTab?.('twilio');
+                    setSettingsSubTab?.('ai_dispatcher');
                   }}
-                  tooltip="Twilio & AI Configuration"
+                  tooltip="AI Dispatcher & Tone"
                 >
                   <AIIcon className="h-4 w-4" />
-                  <span>Twilio &amp; AI</span>
+                  <span>AI Dispatcher</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

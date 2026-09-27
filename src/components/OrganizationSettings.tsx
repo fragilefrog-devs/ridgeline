@@ -2,29 +2,20 @@ import React, { useState } from 'react';
 import { 
   Building2, 
   DollarSign, 
-  Radio, 
   CreditCard, 
-  Copy, 
-  Check, 
   Plus, 
   Trash2, 
   Clock, 
-  ShieldCheck, 
-  MapPin, 
   Phone, 
   AlertTriangle,
-  Send,
-  Zap,
-  CheckCircle2,
   LogOut
 } from 'lucide-react';
 import { Organization, AssistantSettings, TradeService, TradeType } from '../types';
 import { formatCurrency } from '../lib/utils';
-import { apiFetch } from '../lib/apiFetch';
 import { RidgeLineLogo } from './RidgeLineLogo';
 import { AIIcon } from './AIIcon';
 
-export type SettingsSubTab = 'general' | 'rates' | 'twilio' | 'ai_dispatcher' | 'billing';
+export type SettingsSubTab = 'general' | 'rates' | 'ai_dispatcher' | 'billing';
 
 interface OrganizationSettingsProps {
   currentOrg: Organization;
@@ -64,6 +55,9 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
     licenseNumber: currentOrg.licenseNumber || 'CA-PLUMB-982104',
     serviceRadiusMiles: currentOrg.serviceRadiusMiles || 25,
     email: currentOrg.email || 'dispatch@apexplumbingpro.com',
+    // The forwarding number lives on the org row, but older orgs only have it on
+    // assistant_settings — fall back so the field is never silently blanked.
+    forwardCallsTo: currentOrg.forwardCallsTo || settings.forwardCallsTo || '',
   });
 
   // Assistant Settings form state
@@ -77,33 +71,9 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
   const [newDuration, setNewDuration] = useState<number>(2);
   const [newDesc, setNewDesc] = useState('');
 
-  // Webhook copy states
-  const [copiedSms, setCopiedSms] = useState(false);
-  const [copiedVoice, setCopiedVoice] = useState(false);
-  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
-
-  // OpenAI-compatible endpoint test state
-  const [isTestingLlm, setIsTestingLlm] = useState(false);
-  const [llmTestStatus, setLlmTestStatus] = useState<{ success: boolean; message: string; latency?: number } | null>(null);
-
-  const webhookUrl = `${window.location.origin}/api/sms/process`;
-  const voiceWebhookUrl = `${window.location.origin}/api/missed-call/process`;
-
   const handleTabChange = (tab: SettingsSubTab) => {
     setCurrentTab(tab);
     onChangeSubTab?.(tab);
-  };
-
-  const copyToClipboard = (text: string, isVoice = false) => {
-    navigator.clipboard.writeText(text);
-    if (isVoice) {
-      setCopiedVoice(true);
-      setTimeout(() => setCopiedVoice(false), 2000);
-    } else {
-      setCopiedSms(true);
-      setTimeout(() => setCopiedSms(false), 2000);
-    }
   };
 
   const handleSaveOrg = (e: React.FormEvent) => {
@@ -116,6 +86,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
       tradespersonName: orgForm.technicianName,
       tradeType: orgForm.trade,
       twilioPhoneNumber: orgForm.twilioPhoneNumber,
+      forwardCallsTo: orgForm.forwardCallsTo || '',
     });
     showToast(`Organization details for "${orgForm.name}" updated successfully.`);
   };
@@ -123,7 +94,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
   const handleSaveAi = (e: React.FormEvent) => {
     e.preventDefault();
     onUpdateSettings(aiForm);
-    showToast('AI Dispatcher & Twilio rules updated.');
+    showToast('AI Dispatcher rules updated.');
   };
 
   const handleCreateService = (e: React.FormEvent) => {
@@ -147,61 +118,6 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
     showToast(`Service "${newTitle}" added to catalog.`);
   };
 
-  const handleTestWebhook = async () => {
-    setIsTestingWebhook(true);
-    setTestResult(null);
-    try {
-      const data = await apiFetch('/api/health');
-      if (data.status === 'healthy') {
-        setTestResult('Webhook live and responding with 200 OK');
-      } else {
-        setTestResult('Webhook received response with unexpected status');
-      }
-    } catch (e) {
-      setTestResult('Ping succeeded (Local simulator mode active)');
-    } finally {
-      setIsTestingWebhook(false);
-    }
-  };
-
-  const handleTestOpenAiEndpoint = async () => {
-    setIsTestingLlm(true);
-    setLlmTestStatus(null);
-    try {
-      const data = await apiFetch('/api/ai/test-endpoint', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          baseUrl: aiForm.openaiBaseUrl || 'https://9router-production-a99a.up.railway.app/v1',
-          apiKey: aiForm.openaiApiKey || 'sk-0d71fb7c21ea2f91-mv2hhc-443a0a26',
-          model: aiForm.openaiModel || 'gemini/gemini-3.8-flash',
-        }),
-      });
-      if (data.success) {
-        setLlmTestStatus({
-          success: true,
-          message: `Connected successfully to ${data.model} at endpoint!`,
-          latency: data.latencyMs,
-        });
-        showToast(`OpenAI-compatible connection verified (${data.latencyMs}ms)!`);
-      } else {
-        setLlmTestStatus({
-          success: false,
-          message: data.error || 'Connection failed to OpenAI-compatible endpoint.',
-        });
-        showToast(`Connection failed: ${data.error || 'Error'}`);
-      }
-    } catch (err: any) {
-      setLlmTestStatus({
-        success: false,
-        message: err.message || 'Network error while contacting API.',
-      });
-      showToast(`Network error: ${err.message}`);
-    } finally {
-      setIsTestingLlm(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       
@@ -223,7 +139,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
                 </span>
               </div>
               <p className="text-xs text-neutral-500 mt-0.5">
-                Manage organization profile, service rates catalog, Twilio telephony webhooks, and AI persona.
+                Manage organization profile, calling numbers, service rates catalog, and AI persona.
               </p>
             </div>
           </div>
@@ -252,7 +168,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
             )}
 
             <div className="flex items-center gap-2 text-xs text-neutral-500 font-mono">
-              <span>Twilio Line:</span>
+              <span>RidgeLine number:</span>
               <span className="font-semibold text-neutral-900">{currentOrg.twilioPhoneNumber}</span>
             </div>
           </div>
@@ -282,18 +198,6 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
           >
             <DollarSign className="h-3.5 w-3.5" />
             <span>Service Rates ({services.length})</span>
-          </button>
-
-          <button
-            onClick={() => handleTabChange('twilio')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap ${
-              currentTab === 'twilio'
-                ? 'bg-neutral-900 text-white font-semibold shadow-xs'
-                : 'text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'
-            }`}
-          >
-            <Radio className="h-3.5 w-3.5" />
-            <span>Twilio &amp; Telephony</span>
           </button>
 
           <button
@@ -415,6 +319,61 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
                 className="px-4 py-2 text-xs font-semibold rounded-md bg-neutral-900 text-white hover:bg-neutral-800 transition-colors shadow-xs"
               >
                 Save Organization Profile
+              </button>
+            </div>
+          </div>
+
+          {/* Calling */}
+          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs space-y-4">
+            <div className="border-b border-neutral-100 pb-3">
+              <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2 font-head">
+                <Phone className="h-4 w-4 text-neutral-700" />
+                Calling
+              </h3>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                The number customers call, and the phone it rings.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label htmlFor="ridgeline-number" className="block font-medium text-neutral-700 mb-1">Your RidgeLine number</label>
+                <input
+                  id="ridgeline-number"
+                  type="text"
+                  readOnly
+                  onChange={() => {}}
+                  value={currentOrg.twilioPhoneNumber || ''}
+                  placeholder="Not yet provisioned"
+                  className="w-full bg-neutral-100 border border-neutral-200 rounded px-3 py-1.5 text-neutral-600 font-mono cursor-default"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1.5 leading-relaxed">
+                  Provisioned for your business by RidgeLine. This is the number customers should call — put it on your trucks, cards, and listings.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="forward-calls-to" className="block font-medium text-neutral-700 mb-1">Your phone number</label>
+                <input
+                  id="forward-calls-to"
+                  type="tel"
+                  value={orgForm.forwardCallsTo || ''}
+                  onChange={(e) => setOrgForm({ ...orgForm, forwardCallsTo: e.target.value })}
+                  placeholder="e.g. (555) 555-0100"
+                  className="w-full bg-neutral-50 border border-neutral-200 rounded px-3 py-1.5 text-neutral-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1.5 leading-relaxed">
+                  Calls ring here when a customer calls your business line.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-neutral-100">
+              <button
+                type="submit"
+                className="px-4 py-2 text-xs font-semibold rounded-md bg-neutral-900 text-white hover:bg-neutral-800 transition-colors shadow-xs"
+              >
+                Save Calling Details
               </button>
             </div>
           </div>
@@ -576,141 +535,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
         </div>
       )}
 
-      {/* SUB-TAB 3: TWILIO & TELEPHONY */}
-      {currentTab === 'twilio' && (
-        <div className="space-y-6">
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-neutral-900 flex items-center gap-2 font-head">
-                  <Radio className="h-4 w-4 text-red-600" />
-                  Twilio Webhook &amp; Phone Line Configuration
-                </h3>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  Connect RidgeLine directly to your Twilio console for inbound SMS parsing and missed call triggers.
-                </p>
-              </div>
-
-              <button
-                onClick={handleTestWebhook}
-                disabled={isTestingWebhook}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-800 transition-colors shadow-2xs"
-              >
-                <Zap className="h-3.5 w-3.5 text-amber-500" />
-                <span>{isTestingWebhook ? 'Pinging...' : 'Test Webhook Ping'}</span>
-              </button>
-            </div>
-
-            {testResult && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-medium flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                <span>{testResult}</span>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              
-              {/* Twilio SMS Webhook */}
-              <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-neutral-900">Inbound SMS Webhook URL</span>
-                  <span className="text-[10px] bg-neutral-200 text-neutral-700 font-mono px-1.5 py-0.5 rounded">
-                    HTTP POST
-                  </span>
-                </div>
-                <p className="text-neutral-500 text-[11px] leading-relaxed">
-                  Enter this in Twilio Console under Phone Numbers &gt; Configure &gt; Messaging &gt; "A Message Comes In":
-                </p>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    readOnly
-                    value={webhookUrl}
-                    className="w-full text-xs font-mono bg-white border border-neutral-200 rounded px-2.5 py-1.5 text-neutral-700 select-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(webhookUrl, false)}
-                    className="px-2.5 py-1.5 bg-neutral-900 text-white rounded hover:bg-neutral-800 transition-colors shrink-0"
-                    title="Copy to clipboard"
-                  >
-                    {copiedSms ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Twilio Voice / Missed Call Webhook */}
-              <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-neutral-900">Missed Call Fallback Voice Webhook</span>
-                  <span className="text-[10px] bg-neutral-200 text-neutral-700 font-mono px-1.5 py-0.5 rounded">
-                    HTTP POST
-                  </span>
-                </div>
-                <p className="text-neutral-500 text-[11px] leading-relaxed">
-                  Fires an instant auto-text within 10 seconds when a caller hangs up or reaches voicemail:
-                </p>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    readOnly
-                    value={voiceWebhookUrl}
-                    className="w-full text-xs font-mono bg-white border border-neutral-200 rounded px-2.5 py-1.5 text-neutral-700 select-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(voiceWebhookUrl, true)}
-                    className="px-2.5 py-1.5 bg-neutral-900 text-white rounded hover:bg-neutral-800 transition-colors shrink-0"
-                    title="Copy to clipboard"
-                  >
-                    {copiedVoice ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Telephony Phone Numbers */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-3 border-t border-neutral-100">
-              <div>
-                <label className="block font-medium text-neutral-700 mb-1">
-                  Dedicated Twilio Business Number
-                </label>
-                <input
-                  type="text"
-                  value={aiForm.twilioPhoneNumber}
-                  onChange={(e) => setAiForm({ ...aiForm, twilioPhoneNumber: e.target.value })}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded px-3 py-1.5 text-neutral-900 font-mono focus:bg-white focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block font-medium text-neutral-700 mb-1">
-                  Technician Personal Cell (Call Forwarding Target)
-                </label>
-                <input
-                  type="text"
-                  value={aiForm.forwardCallsTo}
-                  onChange={(e) => setAiForm({ ...aiForm, forwardCallsTo: e.target.value })}
-                  className="w-full bg-neutral-50 border border-neutral-200 rounded px-3 py-1.5 text-neutral-900 font-mono focus:bg-white focus:outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-3 border-t border-neutral-100">
-              <button
-                type="button"
-                onClick={handleSaveAi}
-                className="px-4 py-2 text-xs font-semibold rounded-md bg-neutral-900 text-white hover:bg-neutral-800 transition-colors shadow-xs"
-              >
-                Save Telephony Settings
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUB-TAB 4: AI DISPATCHER & TONE */}
+      {/* SUB-TAB 3: AI DISPATCHER & TONE */}
       {currentTab === 'ai_dispatcher' && (
         <form onSubmit={handleSaveAi} className="space-y-6">
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs space-y-5">
@@ -830,158 +655,6 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
               </p>
             </div>
 
-            {/* OPENAI-COMPATIBLE ENDPOINT CONFIGURATION */}
-            <div className="pt-4 border-t border-neutral-100 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h4 className="text-xs font-bold text-neutral-900 font-head flex items-center gap-1.5">
-                    <Zap className="h-3.5 w-3.5 text-amber-500" />
-                    OpenAI-Compatible LLM / AI Engine Settings
-                  </h4>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Configure custom AI routing via OpenAI-compatible endpoints (e.g. 9router, vLLM, LiteLLM, Ollama).
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleTestOpenAiEndpoint}
-                    disabled={isTestingLlm}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 text-neutral-700 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                  >
-                    <Radio className={`h-3 w-3 text-emerald-600 ${isTestingLlm ? 'animate-ping' : ''}`} />
-                    <span>{isTestingLlm ? 'Validating...' : 'Test Connection'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Status / Test result feedback */}
-              {llmTestStatus && (
-                <div
-                  className={`p-3 rounded-lg border text-xs flex items-start gap-2.5 ${
-                    llmTestStatus.success
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-red-50 border-red-200 text-red-800'
-                  }`}
-                >
-                  {llmTestStatus.success ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
-                  )}
-                  <div>
-                    <div className="font-semibold">{llmTestStatus.message}</div>
-                    {llmTestStatus.latency && (
-                      <div className="text-[11px] font-mono opacity-80 mt-0.5">
-                        Latency: {llmTestStatus.latency}ms · API healthy
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Provider Selection */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <label
-                  onClick={() => setAiForm({ ...aiForm, llmProvider: 'openai_compatible' })}
-                  className={`p-3 rounded-lg border cursor-pointer flex flex-col gap-1 transition-colors ${
-                    (aiForm.llmProvider || 'openai_compatible') === 'openai_compatible'
-                      ? 'border-neutral-900 bg-neutral-50/80 font-medium ring-1 ring-neutral-900'
-                      : 'border-neutral-200 hover:border-neutral-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-neutral-900 flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
-                      OpenAI-Compatible Gateway (Active)
-                    </span>
-                    <input
-                      type="radio"
-                      name="llmProvider"
-                      checked={(aiForm.llmProvider || 'openai_compatible') === 'openai_compatible'}
-                      onChange={() => {}}
-                      className="accent-neutral-900"
-                    />
-                  </div>
-                  <span className="text-[11px] text-neutral-500 font-normal">
-                    Routes through OpenAI v1 API standard with custom endpoint URL, API key, and model tag.
-                  </span>
-                </label>
-
-                <label
-                  onClick={() => setAiForm({ ...aiForm, llmProvider: 'gemini' })}
-                  className={`p-3 rounded-lg border cursor-pointer flex flex-col gap-1 transition-colors ${
-                    aiForm.llmProvider === 'gemini'
-                      ? 'border-neutral-900 bg-neutral-50/80 font-medium ring-1 ring-neutral-900'
-                      : 'border-neutral-200 hover:border-neutral-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-neutral-900 flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-blue-500 inline-block" />
-                      Direct Gemini SDK
-                    </span>
-                    <input
-                      type="radio"
-                      name="llmProvider"
-                      checked={aiForm.llmProvider === 'gemini'}
-                      onChange={() => {}}
-                      className="accent-neutral-900"
-                    />
-                  </div>
-                  <span className="text-[11px] text-neutral-500 font-normal">
-                    Direct server-side Google GenAI TypeScript SDK integration.
-                  </span>
-                </label>
-              </div>
-
-              {/* Endpoint, Key and Model Inputs */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs bg-neutral-50 p-3.5 rounded-lg border border-neutral-200">
-                <div className="md:col-span-1">
-                  <label className="block font-medium text-neutral-700 mb-1">
-                    OpenAI-Compatible Endpoint URL
-                  </label>
-                  <input
-                    type="url"
-                    value={aiForm.openaiBaseUrl || 'https://9router-production-a99a.up.railway.app/v1'}
-                    onChange={(e) => setAiForm({ ...aiForm, openaiBaseUrl: e.target.value })}
-                    placeholder="https://.../v1"
-                    className="w-full bg-white border border-neutral-200 rounded px-2.5 py-1.5 text-neutral-800 font-mono text-[11px] focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                  />
-                  <span className="text-[10px] text-neutral-400 mt-1 block">Default: 9router production endpoint</span>
-                </div>
-
-                <div className="md:col-span-1">
-                  <label className="block font-medium text-neutral-700 mb-1">
-                    API Key
-                  </label>
-                  <input
-                    type="password"
-                    value={aiForm.openaiApiKey || 'sk-0d71fb7c21ea2f91-mv2hhc-443a0a26'}
-                    onChange={(e) => setAiForm({ ...aiForm, openaiApiKey: e.target.value })}
-                    placeholder="sk-..."
-                    className="w-full bg-white border border-neutral-200 rounded px-2.5 py-1.5 text-neutral-800 font-mono text-[11px] focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                  />
-                  <span className="text-[10px] text-neutral-400 mt-1 block">Bearer token passed in Authorization header</span>
-                </div>
-
-                <div className="md:col-span-1">
-                  <label className="block font-medium text-neutral-700 mb-1">
-                    Model Identifier
-                  </label>
-                  <input
-                    type="text"
-                    value={aiForm.openaiModel || 'gemini/gemini-3.8-flash'}
-                    onChange={(e) => setAiForm({ ...aiForm, openaiModel: e.target.value })}
-                    placeholder="gemini/gemini-3.8-flash"
-                    className="w-full bg-white border border-neutral-200 rounded px-2.5 py-1.5 text-neutral-800 font-mono text-[11px] focus:outline-none focus:ring-1 focus:ring-neutral-900"
-                  />
-                  <span className="text-[10px] text-neutral-400 mt-1 block">e.g. gemini/gemini-3.8-flash</span>
-                </div>
-              </div>
-            </div>
-
             <div className="flex justify-end pt-3 border-t border-neutral-100">
               <button
                 type="submit"
@@ -994,7 +667,7 @@ export const OrganizationSettings: React.FC<OrganizationSettingsProps> = ({
         </form>
       )}
 
-      {/* SUB-TAB 5: PLAN & BILLING */}
+      {/* SUB-TAB 4: PLAN & BILLING */}
       {currentTab === 'billing' && (
         <div className="space-y-6">
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-xs space-y-4">

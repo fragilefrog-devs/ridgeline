@@ -50,7 +50,6 @@ export const Header: React.FC<HeaderProps> = ({
       case 'settings':
         if (settingsSubTab === 'general') return 'Organization Settings · Profile';
         if (settingsSubTab === 'rates') return 'Organization Settings · Service Rates';
-        if (settingsSubTab === 'twilio') return 'Organization Settings · Twilio Telephony';
         if (settingsSubTab === 'ai_dispatcher') return 'Organization Settings · AI Dispatcher';
         if (settingsSubTab === 'billing') return 'Organization Settings · Plan & Billing';
         return 'Organization Settings';
